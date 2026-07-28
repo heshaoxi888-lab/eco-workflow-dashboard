@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ECO 团队工作流 · Cloudflare 协作版</title>
+<title>ECO万内冷启动工作流看板 v4.0.0 扣子Bot直连·真AI生成</title>
 <style>
 /* ========== 全局变量 ========== */
 :root{
@@ -48,8 +48,6 @@ a{color:var(--c-primary);text-decoration:none}
 .top-actions{display:flex;gap:6px;align-items:center}
 .top-actions button{color:#fff;background:rgba(255,255,255,.12);padding:6px 10px;border-radius:6px;font-size:12px;white-space:nowrap}
 .top-actions button:hover{background:rgba(255,255,255,.25)}
-.cloud-user{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.14);padding:5px 10px;border-radius:18px;font-size:12px;white-space:nowrap}
-.cloud-user .avatar{width:23px;height:23px;border-radius:50%;display:grid;place-items:center;background:#fff;color:var(--c-primary);font-weight:700}
 
 /* ========== 横幅 ========== */
 .demo-banner{background:linear-gradient(90deg,#FEF3C7,#FDE68A);color:#78350F;padding:10px 20px;display:flex;align-items:center;gap:12px;font-size:13px;border-bottom:1px solid #F59E0B}
@@ -58,17 +56,6 @@ a{color:var(--c-primary);text-decoration:none}
 .collab-banner{background:linear-gradient(90deg,#DBEAFE,#BFDBFE);color:#1E40AF;padding:10px 20px;display:flex;align-items:center;gap:12px;font-size:13px;border-bottom:1px solid #3B82F6}
 .collab-banner .btn-setup{margin-left:auto;background:#3B82F6;color:#fff;padding:6px 14px;border-radius:6px;font-weight:600}
 .collab-banner .btn-setup:hover{background:#2563EB}
-.collab-banner.ok{background:linear-gradient(90deg,#DCFCE7,#BBF7D0);color:#166534;border-bottom-color:#22C55E}
-.collab-banner.warn{background:linear-gradient(90deg,#FEF3C7,#FDE68A);color:#92400E;border-bottom-color:#F59E0B}
-.collab-banner.err{background:linear-gradient(90deg,#FEE2E2,#FECACA);color:#991B1B;border-bottom-color:#EF4444}
-.member-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px}
-.member-card{background:#fff;border:1px solid var(--c-border);border-radius:10px;padding:12px;box-shadow:var(--shadow)}
-.member-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
-.member-name{font-weight:700;color:var(--c-deep)}
-.member-email{font-size:12px;color:var(--c-muted);word-break:break-all}
-.role-badge{padding:2px 8px;border-radius:999px;background:var(--c-light);color:var(--c-primary);font-size:11px;font-weight:700}
-.member-card.disabled{opacity:.58}
-.cloud-note{margin-top:10px;padding:9px 12px;border-radius:8px;background:#ECFDF5;color:#166534;font-size:12px}
 
 /* ========== Toast ========== */
 .toast-wrap{position:fixed;top:70px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
@@ -588,8 +575,8 @@ const ECO_PRODUCTS = [
 ];
 
 /* ============================================================
-   ECO 团队工作流看板 v4.1 Cloudflare 协作版
-   Cloudflare D1 持久化 / Access 身份验证 / 团队角色权限 / 扣子Bot
+   ECO 万内冷启动工作流看板 v4.0.0 扣子Bot直连·真AI生成
+   纯单文件HTML / localStorage持久化 / jsonbin.io协作同步 / 直接调用扣子Bot
    ============================================================ */
 const LS_PREFIX = 'eco_dashboard_v3_';
 const COLS = [
@@ -1417,8 +1404,8 @@ let state = {
   logs: [],
   config: {
     currentWeek: getWeekOffset(0),
-    collab: {enabled:true, provider:'cloudflare-d1', nickname:'', interval:10000},
-    ai: {provider:'coze', cozePat:'', cozeBotId:'', doubaoKey:'', doubaoModel:'doubao-seed-1-6-flash', deepseekKey:'', deepseekModel:'deepseek-chat'},
+    collab: {enabled:false, apiKey:'', binId:'', nickname:'小齐', interval:10000},
+    ai: {provider:'coze', cozePat:'pat_c2kcsguV1ygxnvi1KBpiQjlmVZo0Fr79u47L7I7M6jU1JfK6y47NizhNYDRH3g66', cozeBotId:'7666374068698005504', doubaoKey:'', doubaoModel:'doubao-seed-1-6-flash', deepseekKey:'', deepseekModel:'deepseek-chat'},
     demoCleared:false,
     guideShown:false
   },
@@ -1630,229 +1617,247 @@ function getDefaultSchedTime(plat){
 }
 
 
-/* ========== Cloudflare D1 协作同步 ========== */
-let cloudSession = {ready:false,user:null,members:[],logs:[],version:0,workspace:null,error:'',canEdit:false,hasRemoteState:false};
-let collabState = {status:'offline',timer:null,pushTimer:null,lastRemoteVersion:0,localDirty:false};
-
-function escHtml(value){
-  return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function roleLabel(role){ return ({owner:'所有者',admin:'管理员',editor:'编辑者',viewer:'查看者'})[role]||role||'成员'; }
-
-
-// ===== GitHub Pages Deployment: Workers API Base URL =====
-const WORKERS_API = 'https://eco-geo-workers.heshaoxi888.workers.dev';
-// =========================================================
-
-async function cloudRequest(url, options={}){
-  // Prefix with Workers API if URL starts with /api/
-  if(url.startsWith('/api/')) url = WORKERS_API + url;
-
-  const headers = {...(options.headers||{})};
-  if(options.body && !headers['Content-Type']) headers['Content-Type']='application/json';
-  const response = await fetch(url,{...options,headers});
-  const data = await response.json().catch(()=>({}));
-  if(!response.ok){
-    const error = new Error(data.error||`请求失败（${response.status}）`);
-    error.status=response.status; error.payload=data;
-    throw error;
-  }
-  return data;
-}
-
-async function cloudBootstrap(){
-  collabSetStatus('syncing');
-  try{
-    const data = await cloudRequest('/api/bootstrap');
-    cloudSession.ready=true;
-    cloudSession.error='';
-    cloudSession.user=data.user;
-    cloudSession.members=data.members||[];
-    cloudSession.workspace=data.workspace||null;
-    cloudSession.version=Number(data.workspace?.version||0);
-    cloudSession.hasRemoteState=!!data.state;
-    cloudSession.canEdit=data.user?.role!=='viewer';
-    if(data.state) applyRemoteDashboardState(data.state);
-    state.config=state.config||{};
-    state.config.collab={...(state.config.collab||{}),enabled:true,provider:'cloudflare-d1',nickname:data.user?.name||data.user?.email||'',interval:10000};
-    collabState.lastRemoteVersion=cloudSession.version;
-    collabState.localDirty=false;
-    lsSave();
-    collabSetStatus('synced');
-    return true;
-  }catch(error){
-    cloudSession.error=error.message;
-    cloudSession.ready=false;
-    collabSetStatus('offline');
-    return false;
-  }
-}
+/* ========== 协作同步（jsonbin.io） ========== */
+let collabState = {
+  status: 'offline', // offline/syncing/synced/conflict
+  timer: null,
+  pushTimer: null,
+  lastRemoteVersion: 0,
+  localDirty: false
+};
 
 async function collabFetch(){
-  if(!cloudSession.ready) return;
+  const {apiKey,binId,interval} = state.config.collab;
+  if(!apiKey || !binId) return;
   collabSetStatus('syncing');
   try{
-    const data=await cloudRequest('/api/state');
-    const nextVersion=Number(data.version||0);
-    if(data.state && nextVersion>cloudSession.version){
-      if(collabState.localDirty) mergeRemote(data.state);
-      else applyRemoteDashboardState(data.state);
-      cloudSession.version=nextVersion;
-      collabState.lastRemoteVersion=nextVersion;
-      setupDraftProxies();
-      lsSave();
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`,{
+      headers:{'X-Master-Key':apiKey}
+    });
+    if(r.status===401){ toast('API Key错误','err'); collabSetStatus('offline'); return; }
+    if(r.status===404){ toast('Bin不存在','err'); collabSetStatus('offline'); return; }
+    if(r.status===429){ toast('请求超限，请稍后','warn'); return; }
+    const d = await r.json();
+    const remote = d.record;
+    if(!remote) return;
+    if(remote._syncVersion > state._syncVersion){
+      if(collabState.localDirty){
+        // 冲突：简单合并，对tasks按id合并
+        mergeRemote(remote);
+        toast('已同步远端更新（自动合并）','ok');
+      }else{
+        Object.assign(state, remote);
+      }
+      collabState.lastRemoteVersion = remote._syncVersion;
       render();
     }
     collabSetStatus('synced');
-  }catch(error){
-    console.warn('Cloudflare pull error',error);
+  }catch(e){
+    console.warn('pull err',e);
     collabSetStatus('offline');
   }
 }
 
-function applyRemoteDashboardState(remote){
-  const localAI={...(state.config?.ai||{})};
-  Object.assign(state,remote);
-  state.config=state.config||{};
-  state.config.ai={
-    ...(state.config.ai||{}),
-    cozePat:localAI.cozePat||'',
-    doubaoKey:localAI.doubaoKey||'',
-    deepseekKey:localAI.deepseekKey||''
-  };
-}
-
 function mergeRemote(remote){
-  const localTasks=Object.fromEntries((state.tasks||[]).map(t=>[t.id,t]));
-  const remoteTasks=Object.fromEntries((remote.tasks||[]).map(t=>[t.id,t]));
-  state.tasks=[...new Set([...Object.keys(localTasks),...Object.keys(remoteTasks)])].map(id=>{
+  // 按任务id，last-write-wins
+  const localTasks = Object.fromEntries(state.tasks.map(t=>[t.id,t]));
+  const remoteTasks = Object.fromEntries((remote.tasks||[]).map(t=>[t.id,t]));
+  const merged = [];
+  const allIds = new Set([...Object.keys(localTasks),...Object.keys(remoteTasks)]);
+  allIds.forEach(id=>{
     const a=localTasks[id],b=remoteTasks[id];
-    if(!a) return b; if(!b) return a;
-    return (a.lastTime||0)>(b.lastTime||0)?a:b;
+    if(!a) merged.push(b);
+    else if(!b) merged.push(a);
+    else merged.push((a.lastTime||0)>(b.lastTime||0)?a:b);
   });
-  const localTopics=Object.fromEntries((state.myTopics||[]).map(t=>[t.id,t]));
-  const remoteTopics=Object.fromEntries((remote.myTopics||[]).map(t=>[t.id,t]));
-  state.myTopics=[...new Set([...Object.keys(localTopics),...Object.keys(remoteTopics)])].map(id=>{
-    const a=localTopics[id],b=remoteTopics[id];
-    if(!a) return b; if(!b) return a;
-    return (a.addTime||0)>(b.addTime||0)?a:b;
+  state.tasks = merged;
+  // myTopics同理
+  const lm = Object.fromEntries(state.myTopics.map(t=>[t.id,t]));
+  const rm = Object.fromEntries((remote.myTopics||[]).map(t=>[t.id,t]));
+  const mt = [];
+  new Set([...Object.keys(lm),...Object.keys(rm)]).forEach(id=>{
+    const a=lm[id],b=rm[id];
+    if(!a) mt.push(b); else if(!b) mt.push(a); else mt.push((a.addTime||0)>(b.addTime||0)?a:b);
   });
-  ['bdList','geoData','geoHistory','accounts','budget','signals','persons'].forEach(k=>{
-    if(remote[k]!==undefined) state[k]=remote[k];
-  });
+  state.myTopics = mt;
+  // 其他字段按版本号简单选
+  if(remote._syncVersion>state._syncVersion){
+    state.bdList = remote.bdList||state.bdList;
+    state.geoData = remote.geoData||state.geoData;
+    state.geoHistory = remote.geoHistory||state.geoHistory;
+    state.accounts = remote.accounts||state.accounts;
+    state.budget = remote.budget||state.budget;
+    state.signals = remote.signals||state.signals;
+  }
+  state._syncVersion = remote._syncVersion;
+  state._lastModified = remote._lastModified;
+  state._lastModifiedBy = remote._lastModifiedBy;
 }
 
-async function collabPush(retrying=false){
-  if(!cloudSession.ready || !cloudSession.canEdit) return;
+
+function isSandboxed(){
+  try{ if(window.top!==window.self) return true; }catch(e){ return true; }
+  if(window.location.protocol==='blob:'||window.location.protocol==='about:') return true;
+  return false;
+}
+function collabGuard(){
+  if(isSandboxed()){
+    toast('⚠️ 当前在预览/沙箱中打开，协作功能被浏览器安全策略拦截。请点右上角「📥导出/下载」把HTML存到本地，再用Chrome/Edge双击打开后配置协作。','err',9000);
+    return false;
+  }
+  return true;
+}
+async function collabPush(){
+  const {apiKey,binId,nickname} = state.config.collab;
+  if(!apiKey || !binId) return;
   collabSetStatus('syncing');
-  state._syncVersion=(state._syncVersion||0)+1;
-  state._lastModified=Date.now();
-  state._lastModifiedBy=cloudSession.user?.name||cloudSession.user?.email||'团队成员';
+  state._syncVersion = (state._syncVersion||0)+1;
+  state._lastModified = Date.now();
+  state._lastModifiedBy = nickname||'某人';
+  collabState.localDirty = false;
   try{
-    const data=await cloudRequest('/api/state',{
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${binId}`,{
       method:'PUT',
-      body:JSON.stringify({state,expectedVersion:cloudSession.version,action:'同步工作流看板'})
+      headers:{'X-Master-Key':apiKey,'Content-Type':'application/json'},
+      body:JSON.stringify(state)
     });
-    cloudSession.version=Number(data.version||cloudSession.version+1);
-    collabState.lastRemoteVersion=cloudSession.version;
-    collabState.localDirty=false;
-    lsSave();
-    collabSetStatus('synced');
-  }catch(error){
-    if(error.status===409 && !retrying && error.payload?.state){
-      mergeRemote(error.payload.state);
-      cloudSession.version=Number(error.payload.version||cloudSession.version);
-      toast('检测到团队成员的新修改，已自动合并','warn');
-      return collabPush(true);
+    if(r.ok){
+      collabState.lastRemoteVersion = state._syncVersion;
+      collabSetStatus('synced');
+      lsSave();
+    }else{
+      collabSetStatus('offline');
+      collabState.localDirty = true;
     }
-    console.warn('Cloudflare push error',error);
-    collabState.localDirty=true;
-    collabSetStatus(error.status===409?'conflict':'offline');
-    toast(error.message||'同步失败，修改已保存在本机','err');
+  }catch(e){
+    console.warn('push err',e);
+    collabSetStatus('offline');
+    collabState.localDirty = true;
+    if(isSandboxed()) toast('⚠️ 沙箱模式下无法推送，数据仅保存本地。下载HTML到本地打开即可同步。','warn');
   }
 }
 
-function collabSetStatus(status){
-  collabState.status=status;
-  const el=document.getElementById('syncStatus');
+function collabSetStatus(s){
+  collabState.status = s;
+  const el = document.getElementById('syncStatus');
   if(!el) return;
-  el.className='sync-status '+status;
-  const icon=status==='synced'?'🟢':status==='syncing'?'⏳':status==='conflict'?'⚠️':'🔴';
-  const label=status==='synced'?'D1 已同步':status==='syncing'?'同步中…':status==='conflict'?'待合并':'离线缓存';
-  el.innerHTML=`<span class="icon">${icon}</span><span>${label}</span>`;
+  el.className = 'sync-status '+s;
+  const icon = s==='synced'?'🟢':s==='syncing'?'⏳':s==='conflict'?'⚠️':'🔴';
+  const txt = s==='synced'?'已同步':s==='syncing'?'同步中…':s==='conflict'?'冲突':'离线';
+  el.innerHTML = `<span class="icon">${icon}</span><span>${txt}</span>`;
 }
 
 function schedulePush(){
-  collabState.localDirty=true;
+  if(!state.config.collab.enabled) { lsSave(); return; }
+  collabState.localDirty = true;
   lsSave();
-  if(!cloudSession.ready || !cloudSession.canEdit) return;
   if(collabState.pushTimer) clearTimeout(collabState.pushTimer);
-  collabState.pushTimer=setTimeout(()=>collabPush(),1200);
+  collabState.pushTimer = setTimeout(collabPush, 2000);
 }
 
 function startCollab(){
   if(collabState.timer) clearInterval(collabState.timer);
-  if(!cloudSession.ready) return collabSetStatus('offline');
-  collabSetStatus('synced');
-  collabState.timer=setInterval(collabFetch,state.config.collab.interval||10000);
+  if(!state.config.collab.enabled) { collabSetStatus('offline'); return; }
+  if(isSandboxed()){
+    collabSetStatus('offline');
+    if(!document.getElementById('collabSandboxHint')){
+      const b=document.createElement('div');b.id='collabSandboxHint';
+      b.style.cssText='position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:#fff3cd;color:#664d03;padding:10px 18px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:99999;font-size:13px;max-width:92vw;line-height:1.6;';
+      b.innerHTML='⚠️ 当前在<strong>预览/沙箱</strong>内打开，协作同步被浏览器拦截。点右上角 <strong>📥导出/下载</strong> 把HTML存到本地后双击打开，协作即可正常使用。 <button onclick="this.parentNode.remove()" style="margin-left:8px;border:none;background:#664d03;color:#fff;padding:3px 10px;border-radius:4px;cursor:pointer">知道了</button>';
+      document.body.appendChild(b);setTimeout(()=>b.remove(),15000);
+    }
+    return;
+  }
+  collabSetStatus('syncing');
+  collabFetch();
+  collabState.timer = setInterval(collabFetch, state.config.collab.interval||10000);
 }
 
-async function refreshTeamMembers(){
+async function collabCreateBin(){
+  if(!collabGuard()) return;
+  const apiKey = document.getElementById('collabApiKey').value.trim();
+  const nickname = document.getElementById('collabNickname').value.trim()||'小齐';
+  if(!apiKey){ toast('请填写 JSONBin API Key（Bin ID 留空，会自动创建新空间）','err'); return; }
   try{
-    const data=await cloudRequest('/api/members');
-    cloudSession.members=data.members||[];
-    render();
-  }catch(error){ toast(error.message,'err'); }
+    const r = await fetch('https://api.jsonbin.io/v3/b',{
+      method:'POST',
+      headers:{'X-Master-Key':apiKey,'Content-Type':'application/json','X-Bin-Name':'ECO工作流看板协作空间','X-Bin-Private':'false'},
+      body:JSON.stringify(state)
+    });
+    if(r.status===401){ toast('API Key无效','err'); return; }
+    const d = await r.json();
+    if(d.metadata && d.metadata.id){
+      state.config.collab.apiKey = apiKey;
+      state.config.collab.binId = d.metadata.id;
+      state.config.collab.nickname = nickname;
+      state.config.collab.enabled = true;
+      lsSave();
+      toast('协作空间创建成功！','ok');
+      render();
+      startCollab();
+    }else{
+      toast('创建失败：'+(d.message||'未知错误'),'err');
+    }
+  }catch(e){
+    console.warn('create bin err',e);
+    if(isSandboxed()){
+      toast('⚠️ 预览沙箱内无法联网！请点右上角「📥导出/下载」把HTML存到本地，Chrome/Edge双击打开重试。','err',10000);
+    }else{
+      toast('网络错误：无法连接 jsonbin.io，请检查网络/API Key 是否正确','err',6000);
+    }
+  }
 }
 
-async function addTeamMember(){
-  const email=document.getElementById('teamEmail')?.value.trim();
-  const name=document.getElementById('teamName')?.value.trim();
-  const role=document.getElementById('teamRole')?.value||'editor';
-  if(!email) return toast('请填写成员邮箱','err');
-  try{
-    const data=await cloudRequest('/api/members',{method:'POST',body:JSON.stringify({email,name,role})});
-    cloudSession.members=data.members||[];
-    toast('成员已加入团队，对方可直接使用该邮箱登录','ok');
-    render();
-  }catch(error){ toast(error.message,'err'); }
+function collabConnect(){
+  if(!collabGuard()) return;
+  const apiKey = document.getElementById('collabApiKey').value.trim();
+  const binId = document.getElementById('collabBinId').value.trim();
+  const nickname = document.getElementById('collabNickname').value.trim()||'小齐';
+  if(!apiKey||!binId){ toast('请同时填写 API Key 和 Bin ID（Bin ID 找创建者从邀请链接里获取）','err'); return; }
+  state.config.collab.apiKey = apiKey;
+  state.config.collab.binId = binId;
+  state.config.collab.nickname = nickname;
+  state.config.collab.enabled = true;
+  lsSave();
+  toast('正在连接协作空间…','ok');
+  render();
+  startCollab();
 }
 
-async function updateTeamMember(id){
-  const name=document.getElementById(`memberName_${id}`)?.value.trim();
-  const role=document.getElementById(`memberRole_${id}`)?.value;
-  const status=document.getElementById(`memberStatus_${id}`)?.value;
-  try{
-    const data=await cloudRequest('/api/members',{method:'PATCH',body:JSON.stringify({id,name,role,status})});
-    cloudSession.members=data.members||[];
-    toast('成员权限已更新','ok');
-    render();
-  }catch(error){ toast(error.message,'err'); }
+function collabDisconnect(){
+  if(!confirm('确定断开协作？本地数据不会删除。')) return;
+  state.config.collab = {enabled:false,apiKey:'',binId:'',nickname:state.config.collab.nickname||'小齐',interval:10000};
+  if(collabState.timer) clearInterval(collabState.timer);
+  lsSave();
+  toast('已断开协作','ok');
+  render();
+  collabSetStatus('offline');
 }
 
-async function removeTeamMember(id){
-  if(!confirm('确定移除这位成员？')) return;
-  try{
-    const data=await cloudRequest(`/api/members?id=${encodeURIComponent(id)}`,{method:'DELETE'});
-    cloudSession.members=data.members||[];
-    toast('成员已移除','ok');
-    render();
-  }catch(error){ toast(error.message,'err'); }
+function copyInviteLink(){
+  const {apiKey,binId} = state.config.collab;
+  if(!binId){ toast('请先配置协作','err'); return; }
+  const url = `${location.origin}${location.pathname}?binId=${encodeURIComponent(binId)}&apiKey=${encodeURIComponent(apiKey)}&nick=${encodeURIComponent(state.config.collab.nickname||'')}`;
+  navigator.clipboard.writeText(url).then(()=>toast('邀请链接已复制，发给团队成员即可自动加入','ok')).catch(()=>{
+    prompt('复制链接：',url);
+  });
 }
 
-async function loadCloudLogs(){
-  try{
-    const data=await cloudRequest('/api/logs');
-    cloudSession.logs=data.logs||[];
-    render();
-  }catch(error){ toast(error.message,'err'); }
+// URL参数自动填充
+function checkUrlParams(){
+  const p = new URLSearchParams(location.search);
+  if(p.get('binId') && p.get('apiKey')){
+    state.config.collab.binId = p.get('binId');
+    state.config.collab.apiKey = p.get('apiKey');
+    if(p.get('nick')) state.config.collab.nickname = p.get('nick');
+    state.config.collab.enabled = true;
+    toast('检测到协作链接，正在连接…','ok');
+  }
 }
-
-function checkUrlParams(){}
 
 /* ========== 日志 ========== */
 function addLog(who, act){
-  state.logs.unshift({t:Date.now(), who:cloudSession.user?.name||cloudSession.user?.email||who, act});
+  state.logs.unshift({t:Date.now(), who, act});
   if(state.logs.length>50) state.logs.length=50;
   schedulePush();
 }
@@ -1907,7 +1912,6 @@ function render(){
 
 function renderTopbar(){
   const w = weekLabel(state.config.currentWeek);
-  const user = cloudSession.user;
   return `
   <div class="topbar">
     <div class="logo"><span class="leaf">🌿</span>ECO 工作流看板</div>
@@ -1928,7 +1932,6 @@ function renderTopbar(){
       <button class="nav-btn ${currentTab==='account'?'active':''}" data-tab="account">🔗 账号&协作</button>
     </div>
     <div class="top-actions">
-      ${user?`<span class="cloud-user" title="${escHtml(user.email)}"><span class="avatar">${escHtml((user.name||user.email||'E').slice(0,1).toUpperCase())}</span>${escHtml(user.name||user.email)} · ${roleLabel(user.role)}</span>`:''}
       <button onclick="openSettings()">⚙️ 设置</button>
       <button onclick="showHelp()">❓ 帮助</button>
       <button onclick="exportJSON()">📥 导出</button>
@@ -1943,15 +1946,14 @@ function renderBanners(){
   if(!state.config.demoCleared){
     html += `<div class="demo-banner">📌 当前为演示数据，可浏览完整体验。<button class="btn-clear" onclick="clearDemo()">一键清空开始使用</button></div>`;
   }
-  if(cloudSession.error) html += `<div class="collab-banner err">⚠️ Cloudflare 团队空间连接失败：${escHtml(cloudSession.error)} <button class="btn-setup" onclick="location.reload()">重新连接</button> <button class="btn-setup" onclick="location.href='/cdn-cgi/access/logout'">切换登录邮箱</button></div>`;
-  else if(cloudSession.ready && cloudSession.user?.role==='viewer') html += `<div class="collab-banner warn">👁️ 你当前是查看者，只能浏览数据。管理员可在「账号&协作」中调整权限。</div>`;
-  else if(cloudSession.ready) html += `<div class="collab-banner ok">☁️ 已连接 Cloudflare D1 团队空间，数据会自动同步。<button class="btn-setup" onclick="switchTab('account')">管理团队 →</button></div>`;
-  else html += `<div class="collab-banner">☁️ 正在连接 Cloudflare 团队空间…</div>`;
+  if(!state.config.collab.enabled){
+    html += `<div class="collab-banner">🔗 未连接协作空间，数据仅保存在本地（单人模式）。<button class="btn-setup" onclick="switchTab('account');document.getElementById('collabApiKey')&&document.getElementById('collabApiKey').focus()">配置多人协作 →</button></div>`;
+  }
   return html;
 }
 
 function renderFooter(){
-  return `<div class="footer">🌿 ECO 团队工作流 <span class="v">v4.3 Cloudflare Access 协作版</span> · D1 数据库 · 邮箱身份 · 角色权限</div>`;
+  return `<div class="footer">🌿 ECO 万内冷启动工作流看板 <span class="v">v4.0.0 扣子Bot直连·AI真生成</span> · 本地优先 · 支持多人实时同步</div>`;
 }
 
 
@@ -4646,38 +4648,6 @@ function delBD(i){if(!confirm('删除？'))return;state.bdList.splice(i,1);sched
 /* ========== GEO监测 Tab ========== */
 const GEO_QS = ['敏感肌洗发水推荐','孕妇沐浴露','宝宝湿疹面霜','有机洗护品牌','德国有机洗发水','无硅油洗发水真的好吗','儿童防晒怎么选','护手霜推荐','金盏花面霜功效','弱酸性沐浴露'];
 const GEO_BOTS = ['豆包','DeepSeek','Kimi','通义','元宝','文心'];
-const GEO_PROVIDER_LABELS = {doubao:'豆包',deepseek:'DeepSeek',kimi:'Kimi',tongyi:'通义',yuanbao:'元宝',wenxin:'文心'};
-
-function geoWeekDate(){
-  const d=new Date(state.config.currentWeek);
-  const pad=n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-}
-
-async function loadGeoMonitoring(showNotice=false){
-  try{
-    const response=await fetch(`${WORKERS_API}/api/v1/monitoring?week=${encodeURIComponent(geoWeekDate())}&limit=1000`);
-    if(!response.ok) throw new Error(`GEO 数据读取失败（${response.status}）`);
-    const payload=await response.json();
-    const rows=Array.isArray(payload.data)?payload.data:[];
-    rows.forEach(row=>{
-      const question=String(row.question_snapshot||`问题 ${row.question_id}`);
-      let index=GEO_QS.indexOf(question);
-      if(index<0){ GEO_QS.push(question); index=GEO_QS.length-1; }
-      const key='q'+index;
-      if(!state.geoData[key]) state.geoData[key]={q:question};
-      const bot=GEO_PROVIDER_LABELS[String(row.ai_provider||'').toLowerCase()];
-      if(bot) state.geoData[key][bot]=Math.max(0,Math.min(3,Number(row.score)||0));
-    });
-    if(rows.length) lsSave();
-    if(showNotice) toast(rows.length?`已载入 ${rows.length} 条 D1 GEO 监测数据`:'本周暂无 D1 GEO 监测数据',rows.length?'ok':'info');
-    return rows.length;
-  }catch(error){
-    if(showNotice) toast(error.message||'GEO 数据读取失败','err');
-    return 0;
-  }
-}
-
 function renderGEOTab(){
   // 计算
   let mention=0,first=0,total=0;
@@ -4745,7 +4715,7 @@ function renderGEOTab(){
     html += `<div class="bar" style="height:${hgt}%"><span class="bl">${h.mention}%</span></div>`;
   });
   html += `</div><div class="geo-chart-lbl">${hist.map(h=>`<span>${weekLabel(h.week).split(' ')[0]}</span>`).join('')}</div></div>`;
-  html += `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="recordGeoWeek()">📌 记录本周数据</button><button class="btn btn-ghost btn-sm" onclick="loadGeoMonitoring(true).then(render)">☁️ 从 D1 刷新</button></div>`;
+  html += `<div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="recordGeoWeek()">📌 记录本周数据</button></div>`;
   return html;
 }
 function cycleGeo(k,b){
@@ -4842,45 +4812,43 @@ function renderAccountTab(){
     </details>`:''}
   </div>`;
 
-  // Cloudflare 团队空间
-  const canManage=['owner','admin'].includes(cloudSession.user?.role);
+    // 协作设置
+  const c = state.config.collab;
   html += `<div class="collab-section">
-    <h3>☁️ Cloudflare 团队空间</h3>
+    <h3>🔗 多人协作空间（jsonbin.io）</h3>
     <div class="collab-desc">
-      团队数据保存在 Cloudflare D1，由 Cloudflare Access 登录邮箱自动识别身份。系统支持所有者、管理员、编辑者和查看者四种权限；管理员添加成员邮箱后，对方即可直接登录。
+      配置 jsonbin.io 账号后，团队成员可实时同步所有数据（选题/任务/BD/GEO）。免费额度1万次/月，足够5-6人小团队使用。<br><strong style="color:#E63946">⚠️ 重要：</strong>若你在 Coze/飞书/微信等App的文件预览里打开本页，请先点右上角 <strong>📥导出/下载</strong> 把 HTML 存到本地，再用 Chrome/Edge 双击打开，否则协作功能会被浏览器安全策略拦截。<br>
+      <strong>使用步骤：</strong>① 去 jsonbin.io 注册免费账号 → ② 复制 X-Master-Key → ③ 点"创建新协作空间"或填入已有Bin ID → ④ 复制邀请链接发给团队成员
     </div>
-    <div class="cloud-note">🔐 当前成员：<strong>${escHtml(cloudSession.user?.name||cloudSession.user?.email||'尚未连接')}</strong>${cloudSession.user?`（${roleLabel(cloudSession.user.role)}）`:''}。AI Token 仍只保存在当前浏览器，不会同步到团队数据库。</div>
-    ${canManage?`<div class="collab-form" style="margin-top:12px">
-      <div class="field"><label>成员邮箱</label><input type="email" id="teamEmail" placeholder="name@company.com"></div>
-      <div class="field"><label>显示名称</label><input type="text" id="teamName" placeholder="团队成员姓名"></div>
-      <div class="field"><label>权限</label><select id="teamRole"><option value="editor">编辑者</option><option value="admin">管理员</option><option value="viewer">查看者</option></select></div>
-      <div class="field" style="align-self:end"><button class="btn btn-primary" onclick="addTeamMember()">＋ 添加成员</button></div>
-    </div>`:''}
+    <div class="collab-form">
+      <div class="field"><label>JSONBin API Key（X-Master-Key）</label>
+        <input type="password" id="collabApiKey" value="${c.apiKey||''}" placeholder="从jsonbin.io的API Keys获取"></div>
+      <div class="field"><label>Bin ID（已有空间则填，没有则留空点创建）</label>
+        <input type="text" id="collabBinId" value="${c.binId||''}" placeholder="如 680xxxxxxx..."></div>
+      <div class="field"><label>我的昵称（显示在操作日志中）</label>
+        <input type="text" id="collabNickname" value="${c.nickname||'小齐'}" oninput="state.config.collab.nickname=this.value;lsSave()"></div>
+      <div class="field"><label>同步频率</label>
+        <select id="collabInterval" onchange="state.config.collab.interval=parseInt(this.value);lsSave();startCollab()">
+          <option value="5000" ${c.interval===5000?'selected':''}>5秒</option>
+          <option value="10000" ${(!c.interval||c.interval===10000)?'selected':''}>10秒（推荐）</option>
+          <option value="30000" ${c.interval===30000?'selected':''}>30秒</option>
+        </select></div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="collabFetch()">🔄 立即同步</button>
-      <button class="btn btn-ghost btn-sm" onclick="refreshTeamMembers()">👥 刷新成员</button>
-      <button class="btn btn-ghost btn-sm" onclick="loadCloudLogs()">📝 查看云端日志</button>
-      <button class="btn btn-ghost btn-sm" onclick="location.href='/cdn-cgi/access/logout'">退出当前账号</button>
+      ${c.enabled?'<button class="btn btn-primary btn-sm" onclick="collabFetch()">🔄 立即同步</button>':''}
+      <button class="btn btn-primary btn-sm" onclick="collabCreateBin()">🆕 创建新协作空间</button>
+      <button class="btn btn-mid btn-sm" onclick="collabConnect()" ${c.enabled?'disabled':''}>${c.enabled?'已连接':'🔗 连接'}</button>
+      ${c.enabled?'<button class="btn btn-ghost btn-sm" onclick="copyInviteLink()">📋 复制邀请链接</button><button class="btn btn-danger btn-sm" onclick="collabDisconnect()">断开</button>':''}
     </div>
-    <div class="member-grid">
-      ${(cloudSession.members||[]).map(member=>{
-        const editable=canManage && member.role!=='owner' && member.id!==cloudSession.user?.id;
-        return `<div class="member-card ${member.status==='disabled'?'disabled':''}">
-          <div class="member-head"><div><div class="member-name">${escHtml(member.name||member.email)}</div><div class="member-email">${escHtml(member.email)}</div></div><span class="role-badge">${roleLabel(member.role)}</span></div>
-          ${editable?`<div class="field"><label>姓名</label><input id="memberName_${member.id}" value="${escHtml(member.name||'')}"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div class="field"><label>权限</label><select id="memberRole_${member.id}"><option value="admin" ${member.role==='admin'?'selected':''}>管理员</option><option value="editor" ${member.role==='editor'?'selected':''}>编辑者</option><option value="viewer" ${member.role==='viewer'?'selected':''}>查看者</option></select></div><div class="field"><label>状态</label><select id="memberStatus_${member.id}"><option value="active" ${member.status==='active'?'selected':''}>启用</option><option value="disabled" ${member.status==='disabled'?'selected':''}>停用</option></select></div></div>
-          <div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-primary btn-sm" onclick="updateTeamMember('${member.id}')">保存</button><button class="btn btn-danger btn-sm" onclick="removeTeamMember('${member.id}')">移除</button></div>`:`<div style="font-size:12px;color:var(--c-muted)">${member.status==='active'?'账号已启用':'账号已停用'}${member.lastSeenAt?` · 最近登录 ${fmtTime(member.lastSeenAt)}`:''}</div>`}
-        </div>`;
-      }).join('')||'<div style="font-size:12px;color:var(--c-muted)">正在加载团队成员…</div>'}
+    <div class="collab-status-line ${c.enabled?'ok':'off'}">
+      ${c.enabled?`✅ 已连接协作空间（Bin: ${c.binId.slice(0,8)}…），团队成员使用相同Bin ID+API Key即可实时同步`:'⚪ 当前为单人本地模式，配置后启用多人协作'}
     </div>
   </div>`;
-  const visibleLogs=(cloudSession.logs.length?cloudSession.logs:state.logs).slice(0,20);
-  if(visibleLogs.length){
+  // 最近操作日志
+  if(c.enabled && state.logs.length){
     html += `<div class="topic-section"><h3 style="color:var(--c-deep);margin-bottom:8px">📝 最近操作动态</h3><div class="log-panel">`;
-    visibleLogs.forEach(l=>{
-      const when=l.createdAt||l.t;
-      const who=l.actorName||l.actorEmail||l.who||'团队成员';
-      html += `<div class="log-item"><span class="tm">${fmtTime(when)}</span><span class="who">${escHtml(who)}</span><span>${escHtml(l.action||l.act)}</span></div>`;
+    state.logs.slice(0,20).forEach(l=>{
+      html += `<div class="log-item"><span class="tm">${fmtTime(l.t)}</span><span class="who" style="color:${(PERSONS.find(p=>p.name===l.who)||{}).color||'var(--c-primary)'}">${l.who}</span><span>${l.act}</span></div>`;
     });
     html += `</div></div>`;
   }
@@ -4917,7 +4885,7 @@ function renderHelpDrawer(){
   return `<div class="help-mask show" onclick="if(event.target===this)closeHelp()">
     <div class="help-drawer" style="position:relative">
       <button class="close-btn" onclick="closeHelp()">×</button>
-      <h2>❓ ECO工作流看板 v4.2 使用手册</h2>
+      <h2>❓ ECO工作流看板 v4.0 使用手册</h2>
       <p><strong>新流程（v3重构）：</strong>选题→AI生成→微调→审批→裂变→合规→拍摄→发布→数据归档</p>
       <h3>🚀 快速上手</h3>
       <ol>
@@ -4931,10 +4899,10 @@ function renderHelpDrawer(){
       </ol>
       <h3 id="helpCollab">🔗 多人协作配置</h3>
       <ol>
-        <li>所有者进入「🔗账号&协作」，按邮箱添加成员并分配权限</li>
-        <li>系统只展示一次该成员的邀请链接；复制后私下发给对应成员</li>
-        <li>成员打开邀请链接后，自己的访问密钥会保存在当前浏览器并进入同一个 Cloudflare D1 工作空间</li>
-        <li>所有修改自动推送，后台每10秒检查一次其他成员的新更新</li>
+        <li>一个人去 jsonbin.io 注册（免费），在API Keys页面复制X-Master-Key</li>
+        <li>回到看板，进入「🔗账号&协作」Tab，粘贴API Key，点「🆕创建新协作空间」</li>
+        <li>点「📋复制邀请链接」发给其他成员，大家打开链接就自动加入同一个协作空间</li>
+        <li>所有操作会自动同步（约10秒一次），本地操作立即推送</li>
       </ol>
       <h3>📋 9列状态说明</h3>
       <ul>
@@ -4984,7 +4952,7 @@ function renderHelpDrawer(){
       </ul>
       <h3>💾 数据备份</h3>
       <p>右上角「📥导出」可导出JSON备份，「📤导入」可恢复数据。协作模式下数据自动同步到云端。</p>
-      <p style="margin-top:20px;font-size:11px;color:var(--c-muted)">版本 v4.2 · 扣子Bot直连 · Cloudflare D1 团队协作 · 成员独立密钥</p>
+      <p style="margin-top:20px;font-size:11px;color:var(--c-muted)">版本 v4.0.0 · 扣子Bot直连·真AI生成 · localStorage + jsonbin.io · 纯本地HTML · localStorage + jsonbin.io</p>
     </div>
   </div>`;
 }
@@ -5094,9 +5062,9 @@ function importJSON(){
 
 
 /* ========== 初始化 ========== */
-async function init(){
-  try{ localStorage.removeItem('eco_team_access_key_v1'); }catch{}
+function init(){
   const loaded = lsLoad();
+  checkUrlParams();
   if(!loaded){
     loadDemoData();
     state.config.demoCleared = false;
@@ -5113,9 +5081,7 @@ async function init(){
   if(!state.persons) state.persons = PERSONS.map(p=>({...p,goal:10,done:0}));
   if(!state.budget) state.budget={total:9800,spent:0};
   if(!state.config) state.config={};
-  if(!state.config.collab) state.config.collab={enabled:true,provider:'cloudflare-d1',nickname:'',interval:10000};
-  state.config.collab.enabled=true;
-  state.config.collab.provider='cloudflare-d1';
+  if(!state.config.collab) state.config.collab={enabled:false,apiKey:'',binId:'',nickname:'小齐',interval:10000};
   // 代理 window.t_drafts/t_splits 等便捷访问
   setupDraftProxies();
   // 新手引导
@@ -5123,13 +5089,8 @@ async function init(){
     guideOpen = true;
   }
   render();
-  // 使用 Cloudflare Access 登录邮箱连接 D1 团队空间
-  const connected=await cloudBootstrap();
-  await loadGeoMonitoring();
-  setupDraftProxies();
-  render();
-  if(connected){
-    if(!cloudSession.hasRemoteState && cloudSession.canEdit) await collabPush();
+  // 启动协作
+  if(state.config.collab.enabled){
     startCollab();
   }else{
     collabSetStatus('offline');
@@ -5194,7 +5155,7 @@ function openSettings(){
       +'<div class="field"><label>模型ID（自定义API生效）</label><input type="text" id="set_aiModelId" placeholder="dall-e-3"></div>'
       +'</div>'
       +'<div class="sec"><h3>🔗 平台创作者后台绑定</h3><div style="font-size:12px;color:var(--c-muted);margin-bottom:8px">填入后发布卡片"一键发布"会直达后台</div>'+platFields+'</div>'
-      +'<div class="sec"><h3>👤 当前账号</h3><div class="hint">昵称和权限由「账号&协作」中的团队账号管理；这里不再单独设置。</div></div>'
+      +'<div class="sec"><h3>👤 我的昵称（协作时显示）</h3><div class="field"><input type="text" id="set_myNickname" placeholder="小齐"></div></div>'
       +'<div class="sfoot"><button class="btn btn-ghost" onclick="document.getElementById(\'settingsModal\').classList.remove(\'show\')">取消</button>'
       +'<button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button></div>'
       +'</div>';
@@ -5208,6 +5169,7 @@ function openSettings(){
   fill('set_aiEndpoint', ai.endpoint||'');
   fill('set_aiApiKey', ai.apiKey||'');
   fill('set_aiModelId', ai.modelId||'dall-e-3');
+  fill('set_myNickname', (state.config.collab&&state.config.collab.nickname)||'');
   PLATFORMS.forEach(pl=>fill('set_plat_'+pl.key, (state.config.platAccounts&&state.config.platAccounts[pl.key])||''));
   document.getElementById('settingsModal').classList.add('show');
 }
@@ -5220,7 +5182,8 @@ function saveSettings(){
   state.config.ai.modelId = v('set_aiModelId')||'dall-e-3';
   if(!state.config.platAccounts) state.config.platAccounts={};
   PLATFORMS.forEach(pl=>{state.config.platAccounts[pl.key]=v('set_plat_'+pl.key);});
-  if(!state.config.collab) state.config.collab={enabled:true,provider:'cloudflare-d1',nickname:'',interval:10000};
+  if(!state.config.collab) state.config.collab={enabled:false,apiKey:'',binId:'',nickname:'',interval:10000};
+  if(v('set_myNickname')) state.config.collab.nickname = v('set_myNickname');
   lsSave();
   document.getElementById('settingsModal').classList.remove('show');
   toast('设置已保存','ok');
